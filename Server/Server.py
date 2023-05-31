@@ -1,4 +1,5 @@
 import datetime
+import json
 import threading
 from flask import Flask, jsonify, request
 from flask_sse import sse
@@ -33,10 +34,12 @@ class Server(object):
         while datetime.now() < fim_leilao:
             continue
 
-        for sub in leilao.subscribers:
-            sse.publish({"message": f"Fim do Leilao: {leilao.code}, Nome do vencedor: {leilao.winner}, Valor final: {leilao.value}"}, channel=sub.name)
-
         self.leiloes.remove(leilao)
+
+        for sub in leilao.subscribers:
+            sse.publish({"message": f"Fim do Leilao: {leilao.code}, Nome do vencedor: {leilao.winner}, Valor final: {leilao.value}"}, channel=sub)
+
+
 
     def createUser(self):
         name = request.form.get('name')
@@ -45,10 +48,12 @@ class Server(object):
         return ''
 
     def GetLeiloes(self):
-        codes = []
+        leiloes = []
         for leilao in self.leiloes:
-            codes.append(leilao.code)
-        return jsonify(codes)
+            leiloes.append(leilao)
+
+        json_string = json.dumps([ob.__dict__ for ob in leiloes])
+        return jsonify(json_string)
 
     def createLeilao(self):
         user_name = request.form.get('user')
@@ -61,7 +66,7 @@ class Server(object):
         fim_leilao = datetime.strptime(newleilao.duration, '%d/%m/%Y %H:%M:%S')
         if fim_leilao < datetime.now():
             sse.publish({"message": "Não é possível criar leilão com essa data"}, channel=user_name)
-            return None
+            return ''
         newleilao.subscribers.append(user_name)
         self.leiloes.append(newleilao)
         threading.Timer(1, self.verifyEnd, args=(newleilao.code, newleilao.duration)).start()
@@ -91,7 +96,7 @@ class Server(object):
             sse.publish({"message": "Valor menor do que o valor atual!"}, channel=user)
             return None
         if not user_name in leilao.subscribers:
-            leilao.subscribers.append()
+            leilao.subscribers.append(user_name)
         for subscriber in leilao.subscribers:
             sse.publish({"message": f"Novo lance efetuado no leilão: {leilao.code}!"}, channel=subscriber)
         return ''
